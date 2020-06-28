@@ -100,7 +100,7 @@ impl Buffer {
 
   /// returns how much data can be read from the buffer
   #[inline]
-  pub fn available_data(&self) -> usize {
+  pub const fn available_data(&self) -> usize {
     self.end - self.position
   }
 
@@ -118,7 +118,7 @@ impl Buffer {
 
   /// returns true if there is no more data to read
   #[inline]
-  pub fn empty(&self) -> bool {
+  pub const fn empty(&self) -> bool {
     self.position == self.end
   }
 
@@ -184,7 +184,7 @@ impl Buffer {
   /// assert_eq!(b.available_data(), 3);
   /// ```
   #[inline]
-  pub fn position(&self) -> usize {
+  pub const fn position(&self) -> usize {
     self.position
   }
 
