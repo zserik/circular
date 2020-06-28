@@ -47,23 +47,23 @@
 //!   assert_eq!(b.data(), &b"cd"[..]);
 //! }
 //!
-use std::{cmp, ptr};
-use std::io::{self, Write, Read};
+use std::cmp;
+use std::io::{self, Read, Write};
 
 /// the Buffer contains the underlying memory and data positions
 ///
 /// In all cases, `0 ≤ position ≤ end ≤ capacity` should be true
-#[derive(Debug,PartialEq,Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Buffer {
   /// the Vec containing the data
-  memory:   Vec<u8>,
+  memory: Vec<u8>,
   /// the current capacity of the Buffer
   capacity: usize,
   /// the current beginning of the available data
   position: usize,
   /// the current end of the available data
   /// and beginning of the available space
-  end:      usize
+  end: usize,
 }
 
 impl Buffer {
@@ -73,7 +73,7 @@ impl Buffer {
       memory: vec![0; capacity],
       capacity,
       position: 0,
-      end: 0
+      end: 0,
     }
   }
 
@@ -82,10 +82,10 @@ impl Buffer {
   /// the buffer starts full, its available data size is exactly `data.len()`
   pub fn from_slice(data: &[u8]) -> Buffer {
     Buffer {
-      memory:   Vec::from(data),
+      memory: Vec::from(data),
       capacity: data.len(),
       position: 0,
-      end:      data.len()
+      end: data.len(),
     }
   }
 
@@ -128,7 +128,7 @@ impl Buffer {
   /// this will call `shift()` to move the remaining data
   /// to the beginning of the buffer
   pub fn consume(&mut self, count: usize) -> usize {
-    let cnt        = cmp::min(count, self.available_data());
+    let cnt = cmp::min(count, self.available_data());
     self.position += cnt;
     if self.position > self.capacity / 2 {
       //trace!("consume shift: pos {}, end {}", self.position, self.end);
@@ -142,7 +142,7 @@ impl Buffer {
   /// This method is similar to `consume()` but will not move data
   /// to the beginning of the buffer
   pub fn consume_noshift(&mut self, count: usize) -> usize {
-    let cnt        = cmp::min(count, self.available_data());
+    let cnt = cmp::min(count, self.available_data());
     self.position += cnt;
     cnt
   }
@@ -154,7 +154,7 @@ impl Buffer {
   /// `shift()` to move the remaining data to the beginning of the
   /// buffer
   pub fn fill(&mut self, count: usize) -> usize {
-    let cnt   = cmp::min(count, self.available_space());
+    let cnt = cmp::min(count, self.available_space());
     self.end += cnt;
     if self.available_space() < self.available_data() + cnt {
       //trace!("fill shift: pos {}, end {}", self.position, self.end);
@@ -184,14 +184,14 @@ impl Buffer {
   /// assert_eq!(b.available_data(), 3);
   /// ```
   pub fn position(&self) -> usize {
-      self.position
+    self.position
   }
 
   /// moves the position and end trackers to the beginning
   /// this function does not modify the data
   pub fn reset(&mut self) {
     self.position = 0;
-    self.end      = 0;
+    self.end = 0;
   }
 
   /// returns a slice with all the available data
@@ -201,7 +201,7 @@ impl Buffer {
 
   /// returns a mutable slice with all the available space to
   /// write to
-  pub fn space(&mut self) -> &mut[u8] {
+  pub fn space(&mut self) -> &mut [u8] {
     &mut self.memory[self.end..self.capacity]
   }
 
@@ -210,12 +210,9 @@ impl Buffer {
   /// if the position was more than 0, it is now 0
   pub fn shift(&mut self) {
     if self.position > 0 {
-      unsafe {
-        let length = self.end - self.position;
-        ptr::copy( (&self.memory[self.position..self.end]).as_ptr(), (&mut self.memory[..length]).as_mut_ptr(), length);
-        self.position = 0;
-        self.end      = length;
-      }
+      self.memory.copy_within(self.position..self.end, 0);
+      self.end -= self.position;
+      self.position = 0;
     }
   }
 
@@ -223,19 +220,12 @@ impl Buffer {
   #[doc(hidden)]
   pub fn delete_slice(&mut self, start: usize, length: usize) -> Option<usize> {
     if start + length >= self.available_data() {
-      return None
+      return None;
     }
 
-    unsafe {
-      let begin    = self.position + start;
-      let next_end = self.end - length;
-      ptr::copy(
-        (&self.memory[begin+length..self.end]).as_ptr(),
-        (&mut self.memory[begin..next_end]).as_mut_ptr(),
-        self.end - (begin+length)
-      );
-      self.end = next_end;
-    }
+    let begin = self.position + start;
+    self.memory.copy_within(begin + length..self.end, begin);
+    self.end -= length;
     Some(self.available_data())
   }
 
@@ -243,27 +233,22 @@ impl Buffer {
   #[doc(hidden)]
   pub fn replace_slice(&mut self, data: &[u8], start: usize, length: usize) -> Option<usize> {
     let data_len = data.len();
-    if start + length > self.available_data() ||
-      self.position + start + data_len > self.capacity {
-      return None
+    if start + length > self.available_data() || self.position + start + data_len > self.capacity {
+      return None;
     }
 
-    unsafe {
-      let begin     = self.position + start;
-      let slice_end = begin + data_len;
+    let begin = self.position + start;
+    let slice_end = begin + data_len;
+    if data_len < length {
       // we reduced the data size
-      if data_len < length {
-        ptr::copy(data.as_ptr(), (&mut self.memory[begin..slice_end]).as_mut_ptr(), data_len);
-
-        ptr::copy((&self.memory[start+length..self.end]).as_ptr(), (&mut self.memory[slice_end..]).as_mut_ptr(), self.end - (start + length));
-        self.end -= length - data_len;
-
+      self.memory[begin..slice_end].copy_from_slice(data);
+      self.memory.copy_within(begin + length..self.end, slice_end);
+      self.end -= length - data_len;
+    } else {
       // we put more data in the buffer
-      } else {
-        ptr::copy((&self.memory[start+length..self.end]).as_ptr(), (&mut self.memory[start+data_len..]).as_mut_ptr(), self.end - (start + length));
-        ptr::copy(data.as_ptr(), (&mut self.memory[begin..slice_end]).as_mut_ptr(), data_len);
-        self.end = self.end + data_len - length;
-      }
+      self.memory.copy_within(begin + length..self.end, slice_end);
+      self.memory[begin..slice_end].copy_from_slice(data);
+      self.end += data_len - length;
     }
     Some(self.available_data())
   }
@@ -272,30 +257,27 @@ impl Buffer {
   #[doc(hidden)]
   pub fn insert_slice(&mut self, data: &[u8], start: usize) -> Option<usize> {
     let data_len = data.len();
-    if start > self.available_data() ||
-      self.position + self.end + data_len > self.capacity {
-      return None
+    if start > self.available_data() || self.position + self.end + data_len > self.capacity {
+      return None;
     }
 
-    unsafe {
-      let begin     = self.position + start;
-      let slice_end = begin + data_len;
-      ptr::copy((&self.memory[start..self.end]).as_ptr(), (&mut self.memory[start+data_len..]).as_mut_ptr(), self.end - start);
-      ptr::copy(data.as_ptr(), (&mut self.memory[begin..slice_end]).as_mut_ptr(), data_len);
-      self.end += data_len;
-    }
+    let begin = self.position + start;
+    self.memory.copy_within(begin..self.end, begin + data_len);
+    self.memory[begin..begin + data_len].copy_from_slice(data);
+    self.end += data_len;
     Some(self.available_data())
   }
 }
 
 impl Write for Buffer {
   fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-    match self.space().write(buf) {
-      Ok(size) => { self.fill(size); Ok(size) },
-      err      => err
-    }
+    self.space().write(buf).map(|size| {
+      self.fill(size);
+      size
+    })
   }
 
+  #[inline]
   fn flush(&mut self) -> io::Result<()> {
     Ok(())
   }
@@ -304,10 +286,8 @@ impl Write for Buffer {
 impl Read for Buffer {
   fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
     let len = cmp::min(self.available_data(), buf.len());
-    unsafe {
-      ptr::copy((&self.memory[self.position..self.position+len]).as_ptr(), buf.as_mut_ptr(), len);
-      self.position += len;
-    }
+    buf[..len].copy_from_slice(&self.memory[self.position..self.position + len]);
+    self.position += len;
     Ok(len)
   }
 }
@@ -417,7 +397,7 @@ mod tests {
 
   #[test]
   fn set_position() {
-    let mut output = [0;5];
+    let mut output = [0; 5];
     let mut b = Buffer::with_capacity(10);
     let _ = b.write(&b"abcdefgh"[..]);
     let _ = b.read(&mut output);
