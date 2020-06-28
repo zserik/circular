@@ -91,12 +91,11 @@ impl Buffer {
   ///
   /// this does nothing if the buffer is already large enough
   pub fn grow(&mut self, new_size: usize) -> bool {
-    if self.memory.capacity() >= new_size {
-      return false;
+    let ret = self.memory.len() < new_size;
+    if ret {
+      self.memory.resize(new_size, 0);
     }
-
-    self.memory.resize(new_size, 0);
-    true
+    ret
   }
 
   /// returns how much data can be read from the buffer
@@ -118,6 +117,7 @@ impl Buffer {
   }
 
   /// returns true if there is no more data to read
+  #[inline]
   pub fn empty(&self) -> bool {
     self.position == self.end
   }
@@ -190,6 +190,7 @@ impl Buffer {
 
   /// moves the position and end trackers to the beginning
   /// this function does not modify the data
+  #[inline]
   pub fn reset(&mut self) {
     self.position = 0;
     self.end = 0;
@@ -219,8 +220,6 @@ impl Buffer {
     }
   }
 
-  //FIXME: this should probably be rewritten, and tested extensively
-  #[doc(hidden)]
   pub fn delete_slice(&mut self, start: usize, length: usize) -> Option<usize> {
     if start + length >= self.available_data() {
       return None;
@@ -236,12 +235,12 @@ impl Buffer {
   #[doc(hidden)]
   pub fn replace_slice(&mut self, data: &[u8], start: usize, length: usize) -> Option<usize> {
     let data_len = data.len();
-    if start + length > self.available_data() || self.position + start + data_len > self.memory.len() {
+    let begin = self.position + start;
+    let slice_end = begin + data_len;
+    if start + length > self.available_data() || slice_end > self.memory.len() {
       return None;
     }
 
-    let begin = self.position + start;
-    let slice_end = begin + data_len;
     if data_len < length {
       // we reduced the data size
       self.memory[begin..slice_end].copy_from_slice(data);
@@ -256,14 +255,12 @@ impl Buffer {
     Some(self.available_data())
   }
 
-  //FIXME: this should probably be rewritten, and tested extensively
-  #[doc(hidden)]
   pub fn insert_slice(&mut self, data: &[u8], start: usize) -> Option<usize> {
     let data_len = data.len();
-    if start > self.available_data() || self.position + self.end + data_len > self.memory.len() {
+    // self.end + data_len == (self.position + start) + (self.end - self.position - start) + data_len
+    if start > self.available_data() || self.end + data_len > self.memory.len() {
       return None;
     }
-
     let begin = self.position + start;
     self.memory.copy_within(begin..self.end, begin + data_len);
     self.memory[begin..begin + data_len].copy_from_slice(data);
