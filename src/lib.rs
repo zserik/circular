@@ -46,7 +46,9 @@
 //!   assert_eq!(b.available_space(), 8);
 //!   assert_eq!(b.data(), &b"cd"[..]);
 //! }
-//!
+
+#![forbid(unsafe_code)]
+
 use std::cmp;
 use std::io::{self, Read, Write};
 
@@ -57,8 +59,6 @@ use std::io::{self, Read, Write};
 pub struct Buffer {
   /// the Vec containing the data
   memory: Vec<u8>,
-  /// the current capacity of the Buffer
-  capacity: usize,
   /// the current beginning of the available data
   position: usize,
   /// the current end of the available data
@@ -71,7 +71,6 @@ impl Buffer {
   pub fn with_capacity(capacity: usize) -> Buffer {
     Buffer {
       memory: vec![0; capacity],
-      capacity,
       position: 0,
       end: 0,
     }
@@ -83,7 +82,6 @@ impl Buffer {
   pub fn from_slice(data: &[u8]) -> Buffer {
     Buffer {
       memory: Vec::from(data),
-      capacity: data.len(),
       position: 0,
       end: data.len(),
     }
@@ -93,28 +91,30 @@ impl Buffer {
   ///
   /// this does nothing if the buffer is already large enough
   pub fn grow(&mut self, new_size: usize) -> bool {
-    if self.capacity >= new_size {
+    if self.memory.capacity() >= new_size {
       return false;
     }
 
     self.memory.resize(new_size, 0);
-    self.capacity = new_size;
     true
   }
 
   /// returns how much data can be read from the buffer
+  #[inline]
   pub fn available_data(&self) -> usize {
     self.end - self.position
   }
 
   /// returns how much free space is available to write to
+  #[inline]
   pub fn available_space(&self) -> usize {
-    self.capacity - self.end
+    self.memory.len() - self.end
   }
 
   /// returns the underlying vector's size
+  #[inline]
   pub fn capacity(&self) -> usize {
-    self.capacity
+    self.memory.capacity()
   }
 
   /// returns true if there is no more data to read
@@ -130,7 +130,7 @@ impl Buffer {
   pub fn consume(&mut self, count: usize) -> usize {
     let cnt = cmp::min(count, self.available_data());
     self.position += cnt;
-    if self.position > self.capacity / 2 {
+    if self.position > self.memory.capacity() / 2 {
       //trace!("consume shift: pos {}, end {}", self.position, self.end);
       self.shift();
     }
@@ -202,7 +202,7 @@ impl Buffer {
   /// returns a mutable slice with all the available space to
   /// write to
   pub fn space(&mut self) -> &mut [u8] {
-    &mut self.memory[self.end..self.capacity]
+    &mut self.memory[self.end..]
   }
 
   /// moves the data at the beginning of the buffer
@@ -233,7 +233,7 @@ impl Buffer {
   #[doc(hidden)]
   pub fn replace_slice(&mut self, data: &[u8], start: usize, length: usize) -> Option<usize> {
     let data_len = data.len();
-    if start + length > self.available_data() || self.position + start + data_len > self.capacity {
+    if start + length > self.available_data() || self.position + start + data_len > self.memory.len() {
       return None;
     }
 
@@ -257,7 +257,7 @@ impl Buffer {
   #[doc(hidden)]
   pub fn insert_slice(&mut self, data: &[u8], start: usize) -> Option<usize> {
     let data_len = data.len();
-    if start > self.available_data() || self.position + self.end + data_len > self.capacity {
+    if start > self.available_data() || self.position + self.end + data_len > self.memory.len() {
       return None;
     }
 
