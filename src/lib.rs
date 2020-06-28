@@ -183,6 +183,7 @@ impl Buffer {
   /// assert_eq!(b.position(), 5);
   /// assert_eq!(b.available_data(), 3);
   /// ```
+  #[inline]
   pub fn position(&self) -> usize {
     self.position
   }
@@ -195,12 +196,14 @@ impl Buffer {
   }
 
   /// returns a slice with all the available data
+  #[inline]
   pub fn data(&self) -> &[u8] {
     &self.memory[self.position..self.end]
   }
 
   /// returns a mutable slice with all the available space to
   /// write to
+  #[inline]
   pub fn space(&mut self) -> &mut [u8] {
     &mut self.memory[self.end..]
   }
