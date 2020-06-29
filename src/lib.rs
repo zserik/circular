@@ -209,6 +209,14 @@ impl Buffer {
     &mut self.memory[self.end..]
   }
 
+  /// returns a slice with all the available data,
+  /// and a mutable slice with all the available space to write to
+  #[inline]
+  pub fn data_and_space(&mut self) -> (&[u8], &mut [u8]) {
+    let (a, b) = self.memory.split_at_mut(self.end);
+    (&a[self.position..], b)
+  }
+
   /// moves the data at the beginning of the buffer
   ///
   /// if the position was more than 0, it is now 0
