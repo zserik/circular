@@ -236,23 +236,16 @@ impl Buffer {
     let data_len = data.len();
     let begin = self.position + start;
     let slice_end = begin + data_len;
+    let new_end = self.end + data_len - length;
     if start + length > self.available_data()
-      || std::cmp::max(slice_end, self.end + data_len - length) > self.memory.len()
+      || std::cmp::max(slice_end, new_end) > self.memory.len()
     {
       return None;
     }
 
-    if data_len < length {
-      // we reduced the data size
-      self.memory[begin..slice_end].copy_from_slice(data);
-      self.memory.copy_within(begin + length..self.end, slice_end);
-    } else {
-      // we put more data in the buffer
-      self.memory.copy_within(begin + length..self.end, slice_end);
-      self.memory[begin..slice_end].copy_from_slice(data);
-    }
-    self.end -= length;
-    self.end += data_len;
+    self.memory.copy_within(begin + length..self.end, slice_end);
+    self.memory[begin..slice_end].copy_from_slice(data);
+    self.end = new_end;
     Some(self.available_data())
   }
 
