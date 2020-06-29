@@ -128,8 +128,7 @@ impl Buffer {
   /// this will call `shift()` to move the remaining data
   /// to the beginning of the buffer
   pub fn consume(&mut self, count: usize) -> usize {
-    let cnt = cmp::min(count, self.available_data());
-    self.position += cnt;
+    let cnt = self.consume_noshift(count);
     if self.position > self.memory.capacity() / 2 {
       //trace!("consume shift: pos {}, end {}", self.position, self.end);
       self.shift();
@@ -228,24 +227,18 @@ impl Buffer {
     }
   }
 
+  #[inline]
   pub fn delete_slice(&mut self, start: usize, length: usize) -> Option<usize> {
-    if start + length >= self.available_data() {
-      return None;
-    }
-
-    let begin = self.position + start;
-    self.memory.copy_within(begin + length..self.end, begin);
-    self.end -= length;
-    Some(self.available_data())
+    self.replace_slice(&[], start, length)
   }
 
-  //FIXME: this should probably be rewritten, and tested extensively
-  #[doc(hidden)]
   pub fn replace_slice(&mut self, data: &[u8], start: usize, length: usize) -> Option<usize> {
     let data_len = data.len();
     let begin = self.position + start;
     let slice_end = begin + data_len;
-    if start + length > self.available_data() || slice_end > self.memory.len() {
+    if start + length > self.available_data()
+      || std::cmp::max(slice_end, self.end + data_len - length) > self.memory.len()
+    {
       return None;
     }
 
@@ -253,27 +246,19 @@ impl Buffer {
       // we reduced the data size
       self.memory[begin..slice_end].copy_from_slice(data);
       self.memory.copy_within(begin + length..self.end, slice_end);
-      self.end -= length - data_len;
     } else {
       // we put more data in the buffer
       self.memory.copy_within(begin + length..self.end, slice_end);
       self.memory[begin..slice_end].copy_from_slice(data);
-      self.end += data_len - length;
     }
+    self.end -= length;
+    self.end += data_len;
     Some(self.available_data())
   }
 
+  #[inline]
   pub fn insert_slice(&mut self, data: &[u8], start: usize) -> Option<usize> {
-    let data_len = data.len();
-    // self.end + data_len == (self.position + start) + (self.end - self.position - start) + data_len
-    if start > self.available_data() || self.end + data_len > self.memory.len() {
-      return None;
-    }
-    let begin = self.position + start;
-    self.memory.copy_within(begin..self.end, begin + data_len);
-    self.memory[begin..begin + data_len].copy_from_slice(data);
-    self.end += data_len;
-    Some(self.available_data())
+    self.replace_slice(data, start, 0)
   }
 }
 
